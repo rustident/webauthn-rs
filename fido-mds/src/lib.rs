@@ -1114,56 +1114,46 @@ impl TryFrom<RawFidoDevice> for FidoDevice {
 pub struct FidoMds {
     /// The set of FIDO2 device metadata that exists within the Metadata Statement, indexed by their
     /// aaguid / uuid.
-    pub fido2: BTreeMap<Uuid, rc::Rc<FIDO2>>,
-
-    /// The set of FIDO2 device metadata that exists within the Metadata Statement, indexed by their
-    /// descriptions.
-    pub fido2_description: BTreeMap<String, rc::Rc<FIDO2>>,
-
+    pub fido2: Vec<rc::Rc<FIDO2>>,
     /// The set of (legacy) UAF device metadata that exists within the Metadata Statement.
-    pub uaf: BTreeMap<String, UAF>,
+    pub uaf: Vec<UAF>,
     /// The set of (legacy) U2f device metadata that exists within the Metadata Statement.
-    pub u2f: BTreeMap<String, rc::Rc<U2F>>,
+    pub u2f: Vec<rc::Rc<U2F>>,
 }
 
 impl From<RawFidoMds> for FidoMds {
     fn from(rawmds: RawFidoMds) -> Self {
-        let mut fido2 = BTreeMap::new();
-        let mut fido2_description = BTreeMap::new();
-        let mut uaf = BTreeMap::new();
-        let mut u2f = BTreeMap::new();
+        let mut fido2 = Vec::new();
+        let mut uaf = Vec::new();
+        let mut u2f = Vec::new();
 
         rawmds
             .entries
             .into_iter()
             .filter_map(|device| device.try_into().ok())
             .for_each(|fd| match fd {
-                FidoDevice::Uaf(dev) => {
-                    assert!(uaf.insert(dev.aaid.clone(), dev).is_none());
-                }
+                FidoDevice::Uaf(dev) => uaf.push(dev),
                 FidoDevice::U2F(dev) => {
-                    let akis = dev.attestation_certificate_key_identifiers.clone();
+                    // let akis = dev.attestation_certificate_key_identifiers.clone();
                     let dev = rc::Rc::new(dev);
 
-                    akis.into_iter().for_each(|aki| {
-                        assert!(u2f.insert(aki, dev.clone()).is_none());
-                    })
+                    u2f.push(dev.clone());
                 }
                 FidoDevice::FIDO2(dev) => {
                     let dev = rc::Rc::new(dev);
-                    assert!(fido2.insert(dev.aaguid, dev.clone()).is_none());
-                    assert!(fido2_description
-                        .insert(dev.description.clone(), dev)
-                        .is_none());
+                    fido2.push(dev.clone())
                 }
             });
 
-        FidoMds {
-            fido2,
-            fido2_description,
-            uaf,
-            u2f,
-        }
+        // Sort
+        fido2.sort_unstable_by(|a, b| {
+            // a.description.cmp(&b.description)
+            a.aaguid.cmp(&b.aaguid)
+        });
+        u2f.sort_unstable_by(|a, b| a.description.cmp(&b.description));
+        uaf.sort_unstable_by(|a, b| a.description.cmp(&b.description));
+
+        FidoMds { fido2, uaf, u2f }
     }
 }
 
@@ -1177,12 +1167,12 @@ impl FromStr for FidoMds {
 
 impl FidoMds {
     pub fn fido2_query(&self, query: &Query) -> Option<Vec<rc::Rc<FIDO2>>> {
-        debug!("{:?}", query);
+        debug!(?query);
 
         // Iterate over the set of metadata.
         let fds = self
             .fido2
-            .values()
+            .iter()
             .filter(|fd| fd.query_match(query))
             // This is cheap due to Rc,
             .cloned()

@@ -413,6 +413,12 @@ pub enum AttachmentHint {
     /// bluetooth
     #[serde(rename = "bluetooth")]
     Bluetooth,
+    /// network
+    #[serde(rename = "network")]
+    Network,
+    /// wifi-direct
+    #[serde(rename = "wifi_direct")]
+    WifiDirect,
 }
 
 /// The authenticator versions this device supports
@@ -681,7 +687,7 @@ pub struct MetadataStatement {
     #[serde(default)]
     pub ecdaa_trust_anchors: Vec<EcdaaAnchor>,
     /// An icon representing this device.
-    pub icon: serde_json::Value,
+    pub icon: Option<serde_json::Value>,
     /// The list of supported extensions of this authenticator
     #[serde(default)]
     pub supported_extensions: Vec<ExtensionDescriptor>,

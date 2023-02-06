@@ -13,13 +13,23 @@
 use clap::Parser;
 use clap::{Args, Subcommand};
 use std::fs;
+use std::fs::File;
+use std::io::Write;
 use std::path::PathBuf;
 use std::str::FromStr;
-use tracing::{debug, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+
+use url::Url;
 
 use fido_mds::query::Query;
 use fido_mds::FidoMds;
+
+const MDS_URL: &str = "https://mds.fidoalliance.org/";
+
+fn get_default_path() -> PathBuf {
+    PathBuf::from_str("/tmp/mds.blob.jwt").unwrap()
+}
 
 #[derive(Debug, Args)]
 pub struct CommonOpt {
@@ -32,6 +42,13 @@ pub struct CommonOpt {
 
 #[derive(Debug, Args)]
 pub struct QueryOpt {
+    /// A query over the MDS. This query is "scim" like and supports logical conditions. Examples are
+    ///
+    /// * "aaguid eq f4c63eff-d26c-4248-801c-3736c7eaa93a"
+    ///
+    /// * "aaguid eq X or aaguid ne Y"
+    ///
+    /// * "aaguid eq X and aaguid eq Y and not (aaguid eq Z)"
     pub query: String,
     #[clap(flatten)]
     pub common: CommonOpt,
@@ -40,6 +57,9 @@ pub struct QueryOpt {
 #[derive(Debug, Subcommand)]
 #[clap(about = "Fido Metadata Service parsing tool")]
 pub enum Opt {
+    /// Fetch the latest copy of the MDS and store it into the provided path.
+    Fetch(CommonOpt),
+
     /// Parse and display the list of U2F devices from an MDS file.
     ListU2f(CommonOpt),
     /// Parse and display the list of Fido2 devices from an MDS file.
@@ -57,7 +77,8 @@ pub enum Opt {
 impl Opt {
     fn debug(&self) -> bool {
         match self {
-            Opt::ListU2f(CommonOpt { debug, .. })
+            Opt::Fetch(CommonOpt { debug, .. })
+            | Opt::ListU2f(CommonOpt { debug, .. })
             | Opt::ListFido2 {
                 common: CommonOpt { debug, .. },
                 ..
@@ -82,20 +103,15 @@ fn main() {
 
     let fmt_layer = fmt::layer().with_writer(std::io::stderr);
 
-    let filter_layer = if opt.commands.debug() {
-        match EnvFilter::try_new("fido-mds=debug,fido-mds-tool=debug") {
-            Ok(f) => f,
-            Err(e) => {
-                eprintln!("ERROR! Unable to start tracing {e:?}");
-                return;
+    let filter_layer = EnvFilter::try_from_default_env()
+        .or_else(|_| {
+            if opt.commands.debug() {
+                EnvFilter::try_new("fido_mds=debug,fido_mds_tool=debug")
+            } else {
+                EnvFilter::try_new("fido_mds=info,fido_mds_tool=info")
             }
-        }
-    } else {
-        match EnvFilter::try_from_default_env() {
-            Ok(f) => f,
-            Err(_) => EnvFilter::new("fido-mds=warn,fido-mds-tool=warn"),
-        }
-    };
+        })
+        .unwrap();
 
     tracing_subscriber::registry()
         .with(filter_layer)
@@ -103,6 +119,33 @@ fn main() {
         .init();
 
     match opt.commands {
+        Opt::Fetch(CommonOpt { debug: _, path }) => {
+            let mds_url = Url::parse(MDS_URL).expect("Invalid MDS URL");
+
+            info!("Fetching from {} to {:?}", mds_url, path);
+
+            let mut f = match File::create(path) {
+                Ok(f) => f,
+                Err(e) => {
+                    error!("Failed to open file for MDS - {:?}", e);
+                    return;
+                }
+            };
+
+            let data = match reqwest::blocking::get(mds_url).and_then(|req| req.text()) {
+                Ok(data) => data,
+                Err(e) => {
+                    error!("Failed to fetch MDS - {:?}", e);
+                    return;
+                }
+            };
+
+            if let Err(e) = f.write_all(data.as_bytes()) {
+                error!("Failed to write file for MDS - {:?}", e);
+            } else {
+                info!("Ok!");
+            }
+        }
         Opt::ListU2f(CommonOpt { debug: _, path }) => {
             trace!("{:?}", path);
 
@@ -117,7 +160,7 @@ fn main() {
             match FidoMds::from_str(&s) {
                 Ok(mds) => {
                     debug!("{} fido metadata avaliable", mds.u2f.len());
-                    for fd in mds.u2f.values() {
+                    for fd in mds.u2f.iter() {
                         eprintln!("{fd}");
                     }
                 }
@@ -143,7 +186,7 @@ fn main() {
             match FidoMds::from_str(&s) {
                 Ok(mds) => {
                     debug!("{} fido metadata avaliable", mds.fido2.len());
-                    for fd in mds.fido2_description.values() {
+                    for fd in mds.fido2.iter() {
                         eprintln!("{fd}");
                         if extra_details {
                             println!("  authentication_algorithms:");

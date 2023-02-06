@@ -68,7 +68,7 @@ peg::parser! {
             uuid_expr()
 
         rule uuid_expr() -> Query =
-            "aaguid" separator()+ c:compareop() separator() + v:uuid() { Query::Op(AttrValueAssertion::Aaguid(v), c) }
+            "aaguid" separator()+ c:compareop() separator()+ v:uuid() { Query::Op(AttrValueAssertion::Aaguid(v), c) }
 
         pub(crate) rule compareop() -> CompareOp =
             "eq" { CompareOp::Equal } /

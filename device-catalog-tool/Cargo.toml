@@ -1,0 +1,24 @@
+[package]
+name = "webauthn-rs-device-catalog-tool"
+version = "0.5.0-dev"
+authors = ["William Brown <william@blackhats.net.au>"]
+edition = "2021"
+description = "Webauthn RS Device Catalog Query and Generation Tool"
+repository = "https://github.com/kanidm/webauthn-rs"
+readme = "README.md"
+keywords = ["webauthn", "authentication"]
+categories = ["authentication", "web-programming"]
+license = "MPL-2.0"
+
+[dependencies]
+fido-mds = { version = "0.5.0-dev", path = "../fido-mds" }
+tracing = "^0.1.35"
+webauthn-rs-device-catalog = { version = "0.5.0-dev", path = "../device-catalog" }
+
+tracing-subscriber = { version = "^0.3.14", features = ["env-filter", "fmt"] }
+clap = { version = "^3.2", features = ["derive", "env"] }
+serde = { version = "^1.0.141", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1", features = ["serde"] }
+
+base64urlsafedata = { version = "0.1.2", path = "../base64urlsafedata" }
