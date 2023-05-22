@@ -40,12 +40,26 @@ pub struct CommonOpt {
 pub struct QueryOpt {
     /// A query over the MDS. This query is "scim" like and supports logical conditions. Examples are
     ///
-    /// * "aaguid eq f4c63eff-d26c-4248-801c-3736c7eaa93a"
+    /// * "desc cn yubikey"
     ///
     /// * "aaguid eq X or aaguid ne Y"
     ///
-    /// * "aaguid eq X and aaguid eq Y and not (aaguid eq Z)"
+    /// * "status eq l1 and not (aaguid eq Z)"
+    ///
+    /// Supported query types and operators are:
+    ///
+    /// * aaguid eq
+    ///
+    /// * desc eq
+    ///
+    /// * desc cnt
+    ///
+    /// * status eq
+    ///
+    /// * status gte
     pub query: String,
+    #[clap(short, long)]
+    pub output_cert_roots: bool,
     #[clap(flatten)]
     pub common: CommonOpt,
 }
@@ -213,6 +227,7 @@ fn main() {
         }
         Opt::Query(QueryOpt {
             query,
+            output_cert_roots,
             common: CommonOpt { debug: _, path },
         }) => {
             trace!("{:?}", path);
@@ -238,6 +253,27 @@ fn main() {
                     debug!("{} fido metadata avaliable", mds.fido2.len());
                     match mds.fido2_query(&query) {
                         Some(fds) => {
+                            if output_cert_roots {
+                                display_cert_roots(fds)
+                            } else {
+                                display_query_results(fds)
+                            }
+                        }
+                        None => warn!("No metadata matched query"),
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(?e);
+                }
+            }
+        }
+    }
+}
+
+fn display_cert_roots() {
+}
+
+fn display_query_results(fds: () ) {
                             for fd in fds {
                                 println!("aaguid: {}", fd.aaguid);
                                 println!("last update: {}", fd.time_of_last_status_change);
@@ -296,14 +332,4 @@ fn main() {
                                 println!();
                             }
                             // End fds
-                        }
-                        None => warn!("No metadata matched query"),
-                    }
-                }
-                Err(e) => {
-                    tracing::error!(?e);
-                }
-            }
-        }
-    }
 }
