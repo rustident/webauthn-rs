@@ -39,6 +39,8 @@ use crate::mds::{
 
 use crate::query::{AttrValueAssertion, Query};
 
+use webauthn_attestation_ca::AttestationCaList;
+
 use base64::{engine::general_purpose::STANDARD, Engine};
 use compact_jwt::JwtError;
 use std::cmp::Ordering;
@@ -1236,5 +1238,19 @@ impl FidoMds {
         } else {
             Some(fds)
         }
+    }
+
+    pub fn fido2_to_attestation_ca_list(fds: &[rc::Rc<FIDO2>]) -> Result< AttestationCaList, () > {
+        let data: Vec<_> = fds.iter().flat_map(|fd| {
+            fd.attestation_root_certificates.iter().map(|ca| {
+                (ca.as_slice(), fd.aaguid)
+            })
+        }).collect();
+
+
+        AttestationCaList::try_from(
+            data.as_slice()
+        )
+        .map_err(|_e| { () })
     }
 }

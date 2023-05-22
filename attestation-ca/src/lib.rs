@@ -120,6 +120,36 @@ impl TryFrom<&[u8]> for AttestationCaList {
     }
 }
 
+impl TryFrom<&[(&[u8], Uuid)]> for AttestationCaList {
+    type Error = OpenSSLErrorStack;
+
+    fn try_from(iter: &[(&[u8], Uuid)]) -> Result<Self, Self::Error> {
+        let mut cas = BTreeMap::default();
+
+        for (der, aaguid) in iter {
+            let ca = x509::X509::from_der(der)?;
+
+            let kid = ca
+                .digest(hash::MessageDigest::sha256())
+                // Is there a better way to do this with fromIterator?
+                .unwrap();
+
+            if !cas.contains_key(kid.as_ref()) {
+                let mut aaguids = BTreeSet::default();
+                aaguids.insert(*aaguid);
+                let att_ca = AttestationCa { ca, aaguids };
+                cas.insert(kid.to_vec().into(), att_ca);
+            } else {
+                let att_ca = cas.get_mut(kid.as_ref()).expect("Can not fail!");
+                // just add the aaguid
+                att_ca.aaguids.insert(*aaguid);
+            };
+        }
+
+        Ok(AttestationCaList { cas })
+    }
+}
+
 impl FromIterator<(x509::X509, Uuid)> for AttestationCaList {
     fn from_iter<I: IntoIterator<Item = (x509::X509, Uuid)>>(iter: I) -> Self {
         let mut cas = BTreeMap::default();

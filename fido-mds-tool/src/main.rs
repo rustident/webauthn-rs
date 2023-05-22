@@ -16,6 +16,7 @@ use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::str::FromStr;
 use tracing::{debug, error, info, trace, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -24,6 +25,7 @@ use url::Url;
 
 use fido_mds::query::Query;
 use fido_mds::FidoMds;
+use fido_mds::FIDO2;
 
 const MDS_URL: &str = "https://mds.fidoalliance.org/";
 
@@ -254,9 +256,9 @@ fn main() {
                     match mds.fido2_query(&query) {
                         Some(fds) => {
                             if output_cert_roots {
-                                display_cert_roots(fds)
+                                display_cert_roots(&fds)
                             } else {
-                                display_query_results(fds)
+                                display_query_results(&fds)
                             }
                         }
                         None => warn!("No metadata matched query"),
@@ -270,66 +272,75 @@ fn main() {
     }
 }
 
-fn display_cert_roots() {
+fn display_cert_roots(fds: &[Rc<FIDO2>]) {
+    match FidoMds::fido2_to_attestation_ca_list(fds) {
+        Ok(att_ca_list) => {
+            let list = serde_json::to_string(&att_ca_list).unwrap();
+            println!("{}", list)
+        }
+        Err(_) => {
+            eprintln!("Invalid MDS data")
+        }
+    }
 }
 
-fn display_query_results(fds: () ) {
-                            for fd in fds {
-                                println!("aaguid: {}", fd.aaguid);
-                                println!("last update: {}", fd.time_of_last_status_change);
-                                println!("description: {}", fd.description);
-                                println!("authenticator_version: {}", fd.authenticator_version);
-                                println!("authentication_algorithms:");
-                                for alg in fd.authentication_algorithms.iter() {
-                                    println!("  {alg:?}");
-                                }
-                                println!("public_key_alg_and_encodings: ");
-                                for alg in fd.public_key_alg_and_encodings.iter() {
-                                    println!("  {alg:?}");
-                                }
+fn display_query_results(fds: &[Rc<FIDO2>]) {
+    for fd in fds {
+        println!("aaguid: {}", fd.aaguid);
+        println!("last update: {}", fd.time_of_last_status_change);
+        println!("description: {}", fd.description);
+        println!("authenticator_version: {}", fd.authenticator_version);
+        println!("authentication_algorithms:");
+        for alg in fd.authentication_algorithms.iter() {
+            println!("  {alg:?}");
+        }
+        println!("public_key_alg_and_encodings: ");
+        for alg in fd.public_key_alg_and_encodings.iter() {
+            println!("  {alg:?}");
+        }
 
-                                println!("user_verification_details:");
-                                for uvm_or in fd.user_verification_details.iter() {
-                                    println!("-- OR");
-                                    for uvm_and in uvm_or.iter() {
-                                        println!("  AND");
-                                        println!("  {uvm_and}");
-                                    }
-                                }
-                                println!("key_protection:");
-                                for kp in fd.key_protection.iter() {
-                                    println!("  {kp:?}");
-                                }
-                                println!("is_key_restricted: {}", fd.is_key_restricted);
-                                println!(
-                                    "is_fresh_user_verification_required: {}",
-                                    fd.is_fresh_user_verification_required
-                                );
+        println!("user_verification_details:");
+        for uvm_or in fd.user_verification_details.iter() {
+            println!("-- OR");
+            for uvm_and in uvm_or.iter() {
+                println!("  AND");
+                println!("  {uvm_and}");
+            }
+        }
+        println!("key_protection:");
+        for kp in fd.key_protection.iter() {
+            println!("  {kp:?}");
+        }
+        println!("is_key_restricted: {}", fd.is_key_restricted);
+        println!(
+            "is_fresh_user_verification_required: {}",
+            fd.is_fresh_user_verification_required
+        );
 
-                                // attestation root certificates
+        // attestation root certificates
 
-                                println!("supported_extensions:");
-                                for se in fd.supported_extensions.iter() {
-                                    println!(
-                                        "  {} - {} - {}",
-                                        se.id,
-                                        se.fail_if_unknown,
-                                        se.data.as_deref().unwrap_or("")
-                                    );
-                                }
+        println!("supported_extensions:");
+        for se in fd.supported_extensions.iter() {
+            println!(
+                "  {} - {} - {}",
+                se.id,
+                se.fail_if_unknown,
+                se.data.as_deref().unwrap_or("")
+            );
+        }
 
-                                if let Some(authenticator_info) = &fd.authenticator_get_info {
-                                    println!("authenticator_get_info: {authenticator_info:?}");
-                                } else {
-                                    println!("authenticator_get_info: not present")
-                                }
+        if let Some(authenticator_info) = &fd.authenticator_get_info {
+            println!("authenticator_get_info: {authenticator_info:?}");
+        } else {
+            println!("authenticator_get_info: not present")
+        }
 
-                                println!("status_reports:");
-                                for sr in fd.status_reports.iter() {
-                                    println!("  {sr:?}");
-                                }
+        println!("status_reports:");
+        for sr in fd.status_reports.iter() {
+            println!("  {sr:?}");
+        }
 
-                                println!();
-                            }
-                            // End fds
+        println!();
+    }
+    // End fds
 }
