@@ -27,16 +27,12 @@ use fido_mds::FidoMds;
 
 const MDS_URL: &str = "https://mds.fidoalliance.org/";
 
-fn get_default_path() -> PathBuf {
-    PathBuf::from_str("/tmp/mds.blob.jwt").unwrap()
-}
-
 #[derive(Debug, Args)]
 pub struct CommonOpt {
     #[clap(short, long)]
     pub debug: bool,
     /// Path to the MDS file
-    #[clap(short, long)]
+    #[clap(short, long, default_value = "/tmp/mds.blob.jwt")]
     pub path: PathBuf,
 }
 

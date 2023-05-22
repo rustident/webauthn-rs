@@ -741,7 +741,7 @@ pub struct BiometricsStatusReport {
 }
 
 /// The fido certification status of the device associated to this aaid/aaguid.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AuthenticatorStatus {
     /// The device is NOT fido certified
     #[serde(rename = "NOT_FIDO_CERTIFIED")]
@@ -810,6 +810,53 @@ pub enum AuthenticatorStatus {
     /// This device is certified at level 3 plus
     #[serde(rename = "FIDO_CERTIFIED_L3plus")]
     FidoCertifiedL3Plus,
+}
+
+impl FromStr for AuthenticatorStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "not-certified" => Ok(AuthenticatorStatus::NotFidoCertified),
+            "uv-bypass" => Ok(AuthenticatorStatus::UserVerificationBypass),
+            "key-compromise" => Ok(AuthenticatorStatus::AttestationKeyCompromise),
+            "remote-exploit" => Ok(AuthenticatorStatus::UserKeyRemoteCompromise),
+            "physical-compromise" => Ok(AuthenticatorStatus::UserKeyPhysicalCompromise),
+            "update-available" => Ok(AuthenticatorStatus::UpdateAvailable),
+            "revoked" => Ok(AuthenticatorStatus::Revoked),
+            "self-asserted" => Ok(AuthenticatorStatus::SelfAssertionSubmitted),
+            "valid" |
+            "l1" => Ok(AuthenticatorStatus::FidoCertifiedL1),
+            "l1+" => Ok(AuthenticatorStatus::FidoCertifiedL1Plus),
+            "l2" => Ok(AuthenticatorStatus::FidoCertifiedL2),
+            "l2+" => Ok(AuthenticatorStatus::FidoCertifiedL2Plus),
+            "l3" => Ok(AuthenticatorStatus::FidoCertifiedL3),
+            "l3+" => Ok(AuthenticatorStatus::FidoCertifiedL3Plus),
+            _ => Err(()),
+        }
+    }
+}
+
+impl AuthenticatorStatus {
+    pub(crate) fn numeric(&self) -> u8 {
+        match self {
+            AuthenticatorStatus::NotFidoCertified
+            | AuthenticatorStatus::UserVerificationBypass
+            | AuthenticatorStatus::AttestationKeyCompromise
+            | AuthenticatorStatus::UserKeyRemoteCompromise
+            | AuthenticatorStatus::UserKeyPhysicalCompromise
+            | AuthenticatorStatus::UpdateAvailable
+            | AuthenticatorStatus::Revoked
+            | AuthenticatorStatus::SelfAssertionSubmitted=> 0,
+            AuthenticatorStatus::FidoCertified |
+            AuthenticatorStatus::FidoCertifiedL1 => 10,
+            AuthenticatorStatus::FidoCertifiedL1Plus => 11,
+            AuthenticatorStatus::FidoCertifiedL2 => 20,
+            AuthenticatorStatus::FidoCertifiedL2Plus => 21,
+            AuthenticatorStatus::FidoCertifiedL3 => 30,
+            AuthenticatorStatus::FidoCertifiedL3Plus => 31,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

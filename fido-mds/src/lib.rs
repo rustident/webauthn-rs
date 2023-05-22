@@ -37,7 +37,7 @@ use crate::mds::{
     PatternAccuracyDescriptor, ProtocolFamily, PublicKeyAlg,
 };
 
-use crate::query::{AttrValueAssertion, CompareOp, Query};
+use crate::query::{AttrValueAssertion, Query};
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use compact_jwt::JwtError;
@@ -489,6 +489,29 @@ impl TryFrom<RawStatusReport> for StatusReport {
     }
 }
 
+impl PartialEq<AuthenticatorStatus> for StatusReport {
+    fn eq(&self, other: &AuthenticatorStatus) -> bool {
+        match (self, other) {
+            (StatusReport::NotFidoCertified { .. }, AuthenticatorStatus::NotFidoCertified) |
+            (StatusReport::SelfAssertionSubmitted { .. }, AuthenticatorStatus::SelfAssertionSubmitted ) |
+            (StatusReport::UserVerificationBypass { .. }, AuthenticatorStatus::UserVerificationBypass ) |
+            (StatusReport::AttestationKeyCompromise { .. }, AuthenticatorStatus::AttestationKeyCompromise ) |
+            (StatusReport::UserKeyRemoteCompromise { .. }, AuthenticatorStatus::UserKeyRemoteCompromise ) |
+            (StatusReport::UserKeyPhysicalCompromise { .. }, AuthenticatorStatus::UserKeyPhysicalCompromise ) |
+            (StatusReport::Revoked { .. }, AuthenticatorStatus::Revoked ) |
+            (StatusReport::UpdateAvailable { .. }, AuthenticatorStatus::UpdateAvailable ) |
+            (StatusReport::FidoCertified { .. }, AuthenticatorStatus::FidoCertified ) |
+            (StatusReport::FidoCertifiedL1 { .. }, AuthenticatorStatus::FidoCertifiedL1 ) |
+            (StatusReport::FidoCertifiedL1Plus { .. }, AuthenticatorStatus::FidoCertifiedL1Plus ) |
+            (StatusReport::FidoCertifiedL2 { .. }, AuthenticatorStatus::FidoCertifiedL2 ) |
+            (StatusReport::FidoCertifiedL2Plus { .. }, AuthenticatorStatus::FidoCertifiedL2Plus ) |
+            (StatusReport::FidoCertifiedL3 { .. }, AuthenticatorStatus::FidoCertifiedL3 ) |
+            (StatusReport::FidoCertifiedL3Plus { .. }, AuthenticatorStatus::FidoCertifiedL3Plus ) => true,
+            _ => false,
+        }
+    }
+}
+
 impl StatusReport {
     /// Retrieve the effective date of this report
     fn effective_date(&self) -> Option<&str> {
@@ -509,6 +532,30 @@ impl StatusReport {
             | StatusReport::FidoCertifiedL3 { effective_date, .. }
             | StatusReport::FidoCertifiedL3Plus { effective_date, .. } => effective_date.as_deref(),
         }
+    }
+
+    pub(crate) fn numeric(&self) -> u8 {
+        match self {
+            StatusReport::NotFidoCertified { .. }
+            | StatusReport::UserVerificationBypass { .. }
+            | StatusReport::AttestationKeyCompromise { .. }
+            | StatusReport::UserKeyRemoteCompromise { .. }
+            | StatusReport::UserKeyPhysicalCompromise { .. }
+            | StatusReport::UpdateAvailable { .. }
+            | StatusReport::Revoked { .. }
+            | StatusReport::SelfAssertionSubmitted { .. } => 0,
+            StatusReport::FidoCertified { .. } |
+            StatusReport::FidoCertifiedL1 { .. } => 10,
+            StatusReport::FidoCertifiedL1Plus { .. } => 11,
+            StatusReport::FidoCertifiedL2 { .. } => 20,
+            StatusReport::FidoCertifiedL2Plus { .. } => 21,
+            StatusReport::FidoCertifiedL3 { .. } => 30,
+            StatusReport::FidoCertifiedL3Plus { .. } => 31,
+        }
+    }
+
+    fn gte(&self, level: &AuthenticatorStatus) -> bool {
+        self.numeric() >= level.numeric()
     }
 }
 
@@ -855,16 +902,21 @@ impl fmt::Display for FIDO2 {
 }
 
 impl FIDO2 {
-    fn query_attr(&self, ava: &AttrValueAssertion, op: &CompareOp) -> bool {
-        match (ava, op) {
-            (AttrValueAssertion::Aaguid(u), CompareOp::Equal) => self.aaguid == *u,
-            (AttrValueAssertion::Aaguid(u), CompareOp::NotEqual) => self.aaguid != *u,
+    fn query_attr(&self, ava: &AttrValueAssertion) -> bool {
+        match ava {
+            AttrValueAssertion::AaguidEq(u)    => self.aaguid == *u,
+            AttrValueAssertion::DescriptionEq(s) => &self.description == s,
+            AttrValueAssertion::DescriptionCnt(s) => self.description.to_lowercase().contains(s.to_lowercase().as_str()),
+
+            AttrValueAssertion::StatusEq(s)  => self.status_reports.last().map(|sr| sr == s).unwrap_or(false),
+
+            AttrValueAssertion::StatusGte(s)  => self.status_reports.last().map(|sr| sr.gte(s)).unwrap_or(false),
         }
     }
 
     fn query_match(&self, q: &Query) -> bool {
         match q {
-            Query::Op(ava, op) => self.query_attr(ava, op),
+            Query::Op(ava) => self.query_attr(ava),
             Query::And(a, b) => self.query_match(a) && self.query_match(b),
             Query::Or(a, b) => self.query_match(a) || self.query_match(b),
             Query::Not(a) => !self.query_match(a),
