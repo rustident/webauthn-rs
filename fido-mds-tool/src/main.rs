@@ -330,14 +330,14 @@ fn display_query_results(fds: &[Rc<FIDO2>]) {
         }
 
         if let Some(authenticator_info) = &fd.authenticator_get_info {
-            println!("authenticator_get_info: {authenticator_info:?}");
+            println!("authenticator_get_info: {authenticator_info:#?}");
         } else {
             println!("authenticator_get_info: not present")
         }
 
         println!("status_reports:");
         for sr in fd.status_reports.iter() {
-            println!("  {sr:?}");
+            println!("  {sr:#?}");
         }
 
         println!();
