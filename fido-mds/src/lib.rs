@@ -924,6 +924,11 @@ impl FIDO2 {
             Query::Not(a) => !self.query_match(a),
         }
     }
+
+    fn patch(&mut self) {
+        // If this device is known and can be patched, then do so.
+        // Do we have to error here?
+    }
 }
 
 impl TryFrom<RawFidoDevice> for FidoDevice {
@@ -1219,7 +1224,8 @@ impl From<RawFidoMds> for FidoMds {
 
                     u2f.push(dev.clone());
                 }
-                FidoDevice::FIDO2(dev) => {
+                FidoDevice::FIDO2(mut dev) => {
+                    dev.patch();
                     let dev = rc::Rc::new(dev);
                     fido2.push(dev.clone())
                 }
