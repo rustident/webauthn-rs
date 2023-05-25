@@ -1078,11 +1078,37 @@ impl TryFrom<RawFidoDevice> for FidoDevice {
             }
         });
 
-        if !supported_extensions.is_empty() && authenticator_get_info.is_some() {
+        if let Some(agi) = authenticator_get_info.as_ref() {
+            if !supported_extensions.is_empty() {
+                let agi_extn: BTreeSet<_> = agi.extensions
+                .iter().map(|s| s.as_str())
+                    .collect();
+                let sup_extn: BTreeSet<_> = supported_extensions
+                .iter().map(|s| s.id.as_str())
+                    .collect();
+
+                for sup_missing in agi_extn.difference(&sup_extn) {
+                    warn!(
+                        "Inconsistent supported extension descriptor {} in - {:?}, {:?}, {:?}",
+                        sup_missing,
+                        aaid, aaguid, attestation_certificate_key_identifiers
+                    );
+                }
+
+                for agi_missing in sup_extn.difference(&agi_extn) {
+                    warn!(
+                        "Inconsistent authenticator_get_info extension descriptor {} in - {:?}, {:?}, {:?}",
+                        agi_missing,
+                        aaid, aaguid, attestation_certificate_key_identifiers
+                    );
+                }
+            }
+        }
+
+        if aaguid.is_some() && authenticator_get_info.is_none() {
             warn!(
-                "Inconsistent supported extension descriptors in - {:?}, {:?}, {:?}",
-                aaid, aaguid, attestation_certificate_key_identifiers
-            );
+                "FIDO2 Device missing authenticator info - {:?}", aaguid.unwrap()
+            )
         }
 
         if invalid_metadata {
