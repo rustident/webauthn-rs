@@ -3,9 +3,9 @@
 //!
 //! `aaguid eq abcd and userverification eq passcodeexternal`
 
+use crate::AuthenticatorStatus;
 use std::str::FromStr;
 use uuid::Uuid;
-use crate::AuthenticatorStatus;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum AttrValueAssertion {
@@ -122,9 +122,9 @@ mod test {
     fn test_query_attr_uuid() {
         assert_eq!(
             query::expr("aaguid eq c370f859-622e-4388-9ad2-a7fe7551fdba"),
-            Ok(Query::Op(
-                AttrValueAssertion::AaguidEq(uuid::uuid!("c370f859-622e-4388-9ad2-a7fe7551fdba"))
-            ))
+            Ok(Query::Op(AttrValueAssertion::AaguidEq(uuid::uuid!(
+                "c370f859-622e-4388-9ad2-a7fe7551fdba"
+            ))))
         );
     }
 

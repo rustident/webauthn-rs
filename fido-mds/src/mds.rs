@@ -855,8 +855,7 @@ impl FromStr for AuthenticatorStatus {
             "update-available" => Ok(AuthenticatorStatus::UpdateAvailable),
             "revoked" => Ok(AuthenticatorStatus::Revoked),
             "self-asserted" => Ok(AuthenticatorStatus::SelfAssertionSubmitted),
-            "valid" |
-            "l1" => Ok(AuthenticatorStatus::FidoCertifiedL1),
+            "valid" | "l1" => Ok(AuthenticatorStatus::FidoCertifiedL1),
             "l1+" => Ok(AuthenticatorStatus::FidoCertifiedL1Plus),
             "l2" => Ok(AuthenticatorStatus::FidoCertifiedL2),
             "l2+" => Ok(AuthenticatorStatus::FidoCertifiedL2Plus),
@@ -877,9 +876,8 @@ impl AuthenticatorStatus {
             | AuthenticatorStatus::UserKeyPhysicalCompromise
             | AuthenticatorStatus::UpdateAvailable
             | AuthenticatorStatus::Revoked
-            | AuthenticatorStatus::SelfAssertionSubmitted=> 0,
-            AuthenticatorStatus::FidoCertified |
-            AuthenticatorStatus::FidoCertifiedL1 => 10,
+            | AuthenticatorStatus::SelfAssertionSubmitted => 0,
+            AuthenticatorStatus::FidoCertified | AuthenticatorStatus::FidoCertifiedL1 => 10,
             AuthenticatorStatus::FidoCertifiedL1Plus => 11,
             AuthenticatorStatus::FidoCertifiedL2 => 20,
             AuthenticatorStatus::FidoCertifiedL2Plus => 21,

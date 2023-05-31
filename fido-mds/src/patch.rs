@@ -1,8 +1,6 @@
-
-
 use crate::UserVerificationMethod;
+use tracing::{error, warn};
 use uuid::Uuid;
-use tracing::{trace, warn};
 
 use std::hash::{Hash, Hasher};
 
@@ -11,6 +9,19 @@ use std::hash::SipHasher;
 
 const YK5LIGHTNING: Uuid = uuid::uuid!("c5ef55ff-ad9a-4b9f-b580-adebafe026d0");
 const YK5LIGHTNING_HASH: u64 = 9891217653727489461;
+
+const RSADS100: Uuid = uuid::uuid!("7e3f3d30-3557-4442-bdae-139312178b39");
+const RSADS100_HASH: u64 = 5496126100317123879;
+
+const FIDO_KEYPASS_S3: Uuid = uuid::uuid!("f4c63eff-d26c-4248-801c-3736c7eaa93a");
+const FIDO_KEYPASS_S3_HASH: u64 = 2346657496361192329;
+
+const VIVOKEY_APEX: Uuid = uuid::uuid!("d7a423ad-3e19-4492-9200-78137dccc136");
+const VIVOKEY_APEX_HASH: u64 = 2346657496361192329;
+
+const VERIMARK_GUARD_FINGERPRINT: Uuid = uuid::uuid!("d94a29d9-52dd-4247-9c2d-8b818b610389");
+const VERIMARK_GUARD_FINGERPRINT_HASH: u64 = 224376090321988812;
+
 
 pub(crate) fn user_verification_method(
     aaguid: Option<Uuid>,
@@ -23,30 +34,169 @@ pub(crate) fn user_verification_method(
 
     match aaguid {
         Some(aaguid) => {
-            trace!(?aaguid, ?uvm, ?hash);
             if aaguid == YK5LIGHTNING {
                 if hash == YK5LIGHTNING_HASH {
-                    user_verification_method_yk5lightning(uvm)
-                        .map(Some)
+                    user_verification_method_yk5lightning(uvm).map(Some)
                 } else {
-                    warn!("Hash for {} hash changed ({}), this must be inspected manually", hash, YK5LIGHTNING);
+                    warn!(
+                        "Hash for {} hash changed ({}), this must be inspected manually",
+                        YK5LIGHTNING, hash
+                    );
                     Err(())
                 }
-
+            } else if aaguid == RSADS100 {
+                if hash == RSADS100_HASH {
+                    user_verification_method_rsads100(uvm).map(Some)
+                } else {
+                    warn!(
+                        "Hash for {} hash changed ({}), this must be inspected manually",
+                        RSADS100, hash
+                    );
+                    Err(())
+                }
+            } else if aaguid == FIDO_KEYPASS_S3 {
+                if hash == FIDO_KEYPASS_S3_HASH {
+                    user_verification_method_fido_keypass_s3(uvm).map(Some)
+                } else {
+                    warn!(
+                        "Hash for {} hash changed ({}), this must be inspected manually",
+                        FIDO_KEYPASS_S3, hash
+                    );
+                    Err(())
+                }
+            } else if aaguid == VIVOKEY_APEX {
+                if hash == VIVOKEY_APEX_HASH {
+                    user_verification_method_vivokey_apex(uvm).map(Some)
+                } else {
+                    warn!(
+                        "Hash for {} hash changed ({}), this must be inspected manually",
+                        VIVOKEY_APEX, hash
+                    );
+                    Err(())
+                }
+            } else if aaguid == VERIMARK_GUARD_FINGERPRINT {
+                if hash == VERIMARK_GUARD_FINGERPRINT_HASH {
+                    user_verification_method_verimark_guard_fingerprint(uvm).map(Some)
+                } else {
+                    warn!(
+                        "Hash for {} hash changed ({}), this must be inspected manually",
+                        VERIMARK_GUARD_FINGERPRINT, hash
+                    );
+                    Err(())
+                }
             } else {
                 Ok(None)
             }
         }
-        None => Ok(None)
+        None => Ok(None),
     }
 }
 
-fn user_verification_method_yk5lightning(uvm_and: &Vec<Vec<UserVerificationMethod>>)
-    -> Result<Vec<Vec<UserVerificationMethod>>, ()> {
+/// Incorrect UVM Method:
+/// `PresenceInternal AND PasscodeInternal() AND None`
+///
+/// This is and incorrect documentation of the methods, but the "intent" is clear since the
+/// intended UVM's are the same as other Yubikey models. The intent here was that these should
+/// actually be in the OR condition structure, and that PasscodeInternal is actually
+/// PresenceInternal + PasscodeExternal.
+fn user_verification_method_yk5lightning(
+    uvm_and: &Vec<Vec<UserVerificationMethod>>,
+) -> Result<Vec<Vec<UserVerificationMethod>>, ()> {
+    // We know the
 
-    trace!(?uvm_and);
+    let code_accuracy = match uvm_and.get(0).and_then(|inner| inner.get(1)) {
+        Some(UserVerificationMethod::PasscodeInternal(cad)) => cad.clone(),
+        res => {
+            error!("Expected UVM::PasscodeInternal, found {:?}", res);
+            return Err(());
+        }
+    };
 
-    todo!()
-
+    // ORs
+    Ok(vec![
+        vec![UserVerificationMethod::PresenceInternal],
+        vec![
+            UserVerificationMethod::PresenceInternal,
+            UserVerificationMethod::PasscodeExternal(code_accuracy.clone()),
+        ],
+        vec![UserVerificationMethod::PasscodeExternal(code_accuracy)],
+        vec![UserVerificationMethod::None],
+    ])
 }
 
+/// We do NOT have access to this device, so we can only speculate that the same data error
+/// that affects the yk5ci is present here. Since the product does not have a method to
+/// internally accept a PIN, this is likely correct. See
+/// https://www.rsa.com/resources/datasheets/id-plus-ds100-authenticator/
+fn user_verification_method_rsads100(
+    uvm_and: &Vec<Vec<UserVerificationMethod>>,
+) -> Result<Vec<Vec<UserVerificationMethod>>, ()> {
+
+    let code_accuracy = match uvm_and.get(0).and_then(|inner| inner.get(1)) {
+        Some(UserVerificationMethod::PasscodeExternal(cad)) => cad.clone(),
+        res => {
+            error!("Expected UVM::PasscodeInternal, found {:?}", res);
+            return Err(());
+        }
+    };
+
+    // ORs
+    Ok(vec![
+        vec![UserVerificationMethod::PresenceInternal],
+        vec![
+            UserVerificationMethod::PresenceInternal,
+            UserVerificationMethod::PasscodeExternal(code_accuracy.clone()),
+        ],
+        vec![UserVerificationMethod::PasscodeExternal(code_accuracy)],
+        vec![UserVerificationMethod::None],
+    ])
+}
+
+/// We do NOT have access to this device, so we can only speculate that the same data error
+/// that affects the yk5ci is present here where the inputs were placed into an AND rather
+/// than the OR block.
+fn user_verification_method_fido_keypass_s3(
+    _uvm_and: &Vec<Vec<UserVerificationMethod>>,
+) -> Result<Vec<Vec<UserVerificationMethod>>, ()> {
+
+    // ORs
+    Ok(vec![
+        vec![UserVerificationMethod::PresenceInternal],
+        vec![UserVerificationMethod::None],
+    ])
+}
+
+/// We do NOT have access to this device, so we can only speculate that the same data error
+/// that affects the yk5ci is present here where the inputs were placed into an AND rather
+/// than the OR block.
+fn user_verification_method_vivokey_apex(
+    _uvm_and: &Vec<Vec<UserVerificationMethod>>,
+) -> Result<Vec<Vec<UserVerificationMethod>>, ()> {
+
+    // ORs
+    Ok(vec![
+        vec![UserVerificationMethod::PresenceInternal],
+        vec![UserVerificationMethod::None],
+    ])
+}
+
+/// We do NOT have access to this device, so we can only speculate that the same data error
+/// that affects the yk5ci is present here. Since the product does not have a method to
+/// internally accept a PIN, this is likely correct. See
+/// https://www.kensington.com/software/verimark-setup/verimark-guard-setup-guide/
+fn user_verification_method_verimark_guard_fingerprint(
+    _uvm_and: &Vec<Vec<UserVerificationMethod>>,
+) -> Result<Vec<Vec<UserVerificationMethod>>, ()> {
+    Ok(vec![
+        vec![UserVerificationMethod::PresenceInternal],
+        vec![
+            UserVerificationMethod::PresenceInternal,
+            UserVerificationMethod::FingerprintInternal(None)
+        ],
+        vec![
+            UserVerificationMethod::PresenceInternal,
+            UserVerificationMethod::PasscodeExternal(None)
+        ],
+        vec![UserVerificationMethod::None],
+    ])
+}
