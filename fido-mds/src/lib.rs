@@ -22,6 +22,7 @@
 
 pub mod mds;
 pub mod query;
+pub mod patch;
 
 use crate::mds::AuthenticatorStatus;
 use crate::mds::FidoDevice as RawFidoDevice;
@@ -47,8 +48,9 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::rc;
 use std::str::FromStr;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
+use std::hash::Hash;
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
@@ -580,7 +582,7 @@ impl Ord for StatusReport {
 
 /// An identifier of a user verification method. Some methods may contain an internal descriptor
 /// which provides information about certification or details of the user verification method.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub enum UserVerificationMethod {
     /// No user verification is required
     None,
@@ -895,6 +897,14 @@ pub struct FIDO2 {
     pub status_reports: BTreeSet<StatusReport>,
     /// The time this device was last updated.
     pub time_of_last_status_change: String,
+    /// These data as supplied from FIDO is inconsistent for this device, and may contain omissions
+    /// or errors. In some cases the webauthn-rs project has patched these data to correct these
+    /// which is indicated by the "patched" flag.
+    pub inconsistent_data: bool,
+    /// These data have been patched by the webauthn-rs project to repair flaws in the MDS that
+    /// are provided by FIDO. These patches are created by the project observing the device and
+    /// providing this.
+    pub patched_data: bool,
 }
 
 impl fmt::Display for FIDO2 {
@@ -923,11 +933,6 @@ impl FIDO2 {
             Query::Or(a, b) => self.query_match(a) || self.query_match(b),
             Query::Not(a) => !self.query_match(a),
         }
-    }
-
-    fn patch(&mut self) {
-        // If this device is known and can be patched, then do so.
-        // Do we have to error here?
     }
 }
 
@@ -979,6 +984,7 @@ impl TryFrom<RawFidoDevice> for FidoDevice {
         }
 
         let mut invalid_metadata = false;
+        let mut inconsistent_data = false;
 
         // We deconstruct the MDS because there are a bunch of duplicate
         // types / values that we want to expose.
@@ -1055,12 +1061,12 @@ impl TryFrom<RawFidoDevice> for FidoDevice {
             })
             .collect();
 
-        let user_verification_details: Vec<Vec<_>> = user_verification_details.into_iter()
+        let mut user_verification_details: Vec<Vec<_>> = user_verification_details.into_iter()
             .map(|inner| {
                 inner.into_iter()
                     .filter_map(|uvm| {
                         uvm.try_into()
-                            .map_err(|_| {
+                            .map_err(|_e| {
                                 warn!(
                                     "Invalid user verification details located in: {:?}, {:?}, {:?}",
                                     aaid, aaguid, attestation_certificate_key_identifiers
@@ -1068,20 +1074,38 @@ impl TryFrom<RawFidoDevice> for FidoDevice {
                                 invalid_metadata = true;
                             })
                             .ok()
+
                     })
                     .collect()
             })
             .collect();
 
-        user_verification_details.iter().for_each(|uvm_or| {
-            if uvm_or.contains(&UserVerificationMethod::None) && uvm_or.len() != 1 {
-                debug!(?uvm_or);
+        match patch::user_verification_method(aaguid, &user_verification_details) {
+            Ok(None) => {
+                // No patching needed.
+            }
+            Ok(Some(mut uvm_patch)) => {
+                // Patch provided
+                inconsistent_data = true;
+                std::mem::swap(&mut uvm_patch, &mut user_verification_details)
+            }
+            Err(_e) => {
+                error!("Unable to patch user verification methods. This is a bug and should be reported. https://github.com/kanidm/webauthn-rs/issues");
+            }
+        }
+
+        for uvm_and in user_verification_details.iter() {
+            if uvm_and.contains(&UserVerificationMethod::None) && uvm_and.len() != 1 {
+                debug!(?description);
+                debug!(?uvm_and);
                 warn!(
                     "Illogical user verification method located in - None may not exist with other UVM: {:?}, {:?}, {:?}",
                     aaid, aaguid, attestation_certificate_key_identifiers
                 );
+                assert!(false);
+                invalid_metadata = true;
             }
-        });
+        };
 
         if let Some(agi) = authenticator_get_info.as_ref() {
             if !supported_extensions.is_empty() {
@@ -1098,6 +1122,7 @@ impl TryFrom<RawFidoDevice> for FidoDevice {
                         sup_missing,
                         aaid, aaguid, attestation_certificate_key_identifiers
                     );
+                    inconsistent_data = true;
                 }
 
                 for agi_missing in sup_extn.difference(&agi_extn) {
@@ -1106,6 +1131,7 @@ impl TryFrom<RawFidoDevice> for FidoDevice {
                         agi_missing,
                         aaid, aaguid, attestation_certificate_key_identifiers
                     );
+                    inconsistent_data = true;
                 }
             }
         }
@@ -1113,7 +1139,8 @@ impl TryFrom<RawFidoDevice> for FidoDevice {
         if aaguid.is_some() && authenticator_get_info.is_none() {
             warn!(
                 "FIDO2 Device missing authenticator info - {:?}", aaguid.unwrap()
-            )
+            );
+            invalid_metadata = true;
         }
 
         if invalid_metadata {
@@ -1163,6 +1190,8 @@ impl TryFrom<RawFidoDevice> for FidoDevice {
                 authenticator_get_info,
                 status_reports,
                 time_of_last_status_change,
+                inconsistent_data,
+                patched_data: false,
             })),
             (ProtocolFamily::U2f, None, None, Some(aki)) => Ok(FidoDevice::U2F(U2F {
                 attestation_certificate_key_identifiers: aki,
@@ -1224,8 +1253,7 @@ impl From<RawFidoMds> for FidoMds {
 
                     u2f.push(dev.clone());
                 }
-                FidoDevice::FIDO2(mut dev) => {
-                    dev.patch();
+                FidoDevice::FIDO2(dev) => {
                     let dev = rc::Rc::new(dev);
                     fido2.push(dev.clone())
                 }

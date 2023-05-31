@@ -15,6 +15,7 @@ use std::str::FromStr;
 use tracing::{debug, error};
 
 use std::collections::BTreeMap;
+use std::hash::{Hash, Hasher};
 use uuid::Uuid;
 
 static GLOBAL_SIGN_ROOT_CA_R3: &str = r#"
@@ -57,7 +58,7 @@ pub struct Upv {
     pub minor: u16,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 /// The CodeAccuracyDescriptor describes the relevant accuracy/complexity aspects of passcode user verification methods.
 pub struct CodeAccuracyDescriptor {
@@ -116,7 +117,23 @@ pub struct BiometricAccuracyDescriptor {
     pub block_slowdown: Option<u16>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl Hash for BiometricAccuracyDescriptor {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.self_attested_frr
+            .map(|f| f.to_le_bytes())
+            .unwrap_or([0; 4])
+            .hash(state);
+        self.self_attested_far
+            .map(|f| f.to_le_bytes())
+            .unwrap_or([0; 4])
+            .hash(state);
+        self.max_templates.hash(state);
+        self.max_retries.hash(state);
+        self.block_slowdown.hash(state);
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 /// The PatternAccuracyDescriptor describes relevant accuracy/complexity aspects in the case that a
 /// pattern is used as the user verification method.
@@ -135,6 +152,19 @@ pub struct PatternAccuracyDescriptor {
     /// verification methods must be specified appropriately in the metadata under
     /// userVerificationDetails.
     pub block_slowdown: Option<u16>,
+}
+
+impl Hash for PatternAccuracyDescriptor {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.max_retries
+            .map(|f| f.to_le_bytes())
+            .unwrap_or([0; 2])
+            .hash(state);
+        self.block_slowdown
+            .map(|f| f.to_le_bytes())
+            .unwrap_or([0; 2])
+            .hash(state);
+    }
 }
 
 /// User Verification Methods
