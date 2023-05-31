@@ -168,7 +168,7 @@ impl Hash for PatternAccuracyDescriptor {
 }
 
 /// User Verification Methods
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum UserVerificationMethod {
     /// None
     #[serde(rename = "none")]

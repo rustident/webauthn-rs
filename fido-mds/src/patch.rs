@@ -1,3 +1,6 @@
+use crate::mds::{
+    UserVerificationMethod as RawUserVerificationMethod, VerificationMethodAndCombinations,
+};
 use crate::UserVerificationMethod;
 use tracing::{error, warn};
 use uuid::Uuid;
@@ -22,6 +25,55 @@ const VIVOKEY_APEX_HASH: u64 = 2346657496361192329;
 const VERIMARK_GUARD_FINGERPRINT: Uuid = uuid::uuid!("d94a29d9-52dd-4247-9c2d-8b818b610389");
 const VERIMARK_GUARD_FINGERPRINT_HASH: u64 = 224376090321988812;
 
+pub(crate) fn mds_user_verification_method_code_accuracy_descriptor(
+    uvm: &mut Vec<Vec<VerificationMethodAndCombinations>>,
+) -> bool {
+    let mut changed = false;
+
+    for uvm_and in uvm.iter_mut() {
+        if uvm_and.len() == 2 {
+            let (l, r) = uvm_and.split_at_mut(1);
+            if l[0].user_verification_method == RawUserVerificationMethod::PasscodeExternal
+                && l[0].ca_desc.is_none()
+                && r[0].user_verification_method == RawUserVerificationMethod::PresenceInternal
+                && r[0].ca_desc.is_some()
+            {
+                std::mem::swap(&mut l[0].ca_desc, &mut r[0].ca_desc);
+                changed = true;
+            } else if r[0].user_verification_method == RawUserVerificationMethod::PasscodeExternal
+                && r[0].ca_desc.is_none()
+                && l[0].user_verification_method == RawUserVerificationMethod::PresenceInternal
+                && l[0].ca_desc.is_some()
+            {
+                std::mem::swap(&mut l[0].ca_desc, &mut r[0].ca_desc);
+                changed = true;
+            }
+        }
+    }
+
+    changed
+}
+
+pub(crate) fn mds_user_verification_method_invalid_all_present(
+    uvm: &mut Vec<Vec<VerificationMethodAndCombinations>>,
+) -> bool {
+    let mut changed = false;
+
+    for uvm_and in uvm.iter_mut() {
+        let mut idx = None;
+        for (i, uvm_item) in uvm_and.iter().enumerate() {
+            if uvm_item.user_verification_method == RawUserVerificationMethod::All {
+                idx = Some(i)
+            }
+        }
+        if let Some(idx) = idx {
+            uvm_and.remove(idx);
+            changed = true;
+        }
+    }
+
+    changed
+}
 
 pub(crate) fn user_verification_method(
     aaguid: Option<Uuid>,
@@ -131,7 +183,6 @@ fn user_verification_method_yk5lightning(
 fn user_verification_method_rsads100(
     uvm_and: &Vec<Vec<UserVerificationMethod>>,
 ) -> Result<Vec<Vec<UserVerificationMethod>>, ()> {
-
     let code_accuracy = match uvm_and.get(0).and_then(|inner| inner.get(1)) {
         Some(UserVerificationMethod::PasscodeExternal(cad)) => cad.clone(),
         res => {
@@ -158,7 +209,6 @@ fn user_verification_method_rsads100(
 fn user_verification_method_fido_keypass_s3(
     _uvm_and: &Vec<Vec<UserVerificationMethod>>,
 ) -> Result<Vec<Vec<UserVerificationMethod>>, ()> {
-
     // ORs
     Ok(vec![
         vec![UserVerificationMethod::PresenceInternal],
@@ -172,7 +222,6 @@ fn user_verification_method_fido_keypass_s3(
 fn user_verification_method_vivokey_apex(
     _uvm_and: &Vec<Vec<UserVerificationMethod>>,
 ) -> Result<Vec<Vec<UserVerificationMethod>>, ()> {
-
     // ORs
     Ok(vec![
         vec![UserVerificationMethod::PresenceInternal],
@@ -191,11 +240,11 @@ fn user_verification_method_verimark_guard_fingerprint(
         vec![UserVerificationMethod::PresenceInternal],
         vec![
             UserVerificationMethod::PresenceInternal,
-            UserVerificationMethod::FingerprintInternal(None)
+            UserVerificationMethod::FingerprintInternal(None),
         ],
         vec![
             UserVerificationMethod::PresenceInternal,
-            UserVerificationMethod::PasscodeExternal(None)
+            UserVerificationMethod::PasscodeExternal(None),
         ],
         vec![UserVerificationMethod::None],
     ])

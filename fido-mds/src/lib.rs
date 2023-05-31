@@ -48,7 +48,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::rc;
 use std::str::FromStr;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
@@ -1050,7 +1050,7 @@ impl TryFrom<RawFidoDevice> for FidoDevice {
             authentication_algorithms,
             public_key_alg_and_encodings,
             attestation_types,
-            user_verification_details,
+            mut user_verification_details,
             key_protection,
             is_key_restricted,
             is_fresh_user_verification_required,
@@ -1109,6 +1109,26 @@ impl TryFrom<RawFidoDevice> for FidoDevice {
             })
             .collect();
 
+        if patch::mds_user_verification_method_code_accuracy_descriptor(
+            &mut user_verification_details,
+        ) {
+            info!(
+                "Device was patched for invalid code accuracy descriptior on presence: {:?}, {:?}, {:?}",
+                aaid, aaguid, attestation_certificate_key_identifiers
+            );
+            inconsistent_data = true;
+        }
+
+        if patch::mds_user_verification_method_invalid_all_present(&mut user_verification_details) {
+            info!(
+                "Device was patched for uvm 'all', which violates fido's standards: {:?}, {:?}, {:?}",
+                aaid, aaguid, attestation_certificate_key_identifiers
+            );
+            inconsistent_data = true;
+        }
+
+        // debug!("{:#?}", user_verification_details);
+
         let mut user_verification_details: Vec<Vec<_>> = user_verification_details.into_iter()
             .map(|inner| {
                 inner.into_iter()
@@ -1119,6 +1139,7 @@ impl TryFrom<RawFidoDevice> for FidoDevice {
                                     "Invalid user verification details located in: {:?}, {:?}, {:?}",
                                     aaid, aaguid, attestation_certificate_key_identifiers
                                 );
+                                assert!(!aaguid.is_some());
                                 invalid_metadata = true;
                             })
                             .ok()
@@ -1148,6 +1169,7 @@ impl TryFrom<RawFidoDevice> for FidoDevice {
                     "Illogical user verification method located in - None may not exist with other UVM: {:?}, {:?}, {:?}",
                     aaid, aaguid, attestation_certificate_key_identifiers
                 );
+                assert!(!aaguid.is_some());
                 invalid_metadata = true;
             }
         }
