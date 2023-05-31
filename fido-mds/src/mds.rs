@@ -496,7 +496,7 @@ pub struct AuthenticatorGetInfo {
     #[serde(default)]
     pub transports: Vec<String>,
     #[serde(default)]
-    algorithms: Vec<serde_json::Value>,
+    pub(crate) algorithms: Vec<serde_json::Value>,
     /// The maximum size of large blob array this device can store, if the extension is supported.
     pub max_serialized_large_blob_array: Option<u32>,
     #[serde(rename = "forcePINChange")]
@@ -515,7 +515,7 @@ pub struct AuthenticatorGetInfo {
     uv_modality: Option<u32>,
     #[serde(default)]
     certifications: BTreeMap<String, u32>,
-    remaining_discoverable_credentials: Option<u32>,
+    pub(crate) remaining_discoverable_credentials: Option<u32>,
     /// Vendor specific details
     #[serde(default)]
     pub vendor_prototype_config_commands: Vec<u32>,

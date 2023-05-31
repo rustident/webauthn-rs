@@ -1064,7 +1064,7 @@ impl TryFrom<RawFidoDevice> for FidoDevice {
             ecdaa_trust_anchors,
             icon: _,
             supported_extensions,
-            authenticator_get_info,
+            mut authenticator_get_info,
         } = metadata_statement;
 
         let status_reports: BTreeSet<_> = status_reports
@@ -1172,6 +1172,28 @@ impl TryFrom<RawFidoDevice> for FidoDevice {
                 assert!(!aaguid.is_some());
                 invalid_metadata = true;
             }
+        }
+
+        // There are multiple devices that have no authenticator get info, and instead rely on
+        // other fields in the metadata to do the work for them. In these cases, we should actually
+        // make the AGI is None since it's only populated by the fido MDS and not a true mds.
+
+        let agi_invalid = if let Some(agi) = authenticator_get_info.as_ref() {
+            agi.extensions.is_empty() &&
+                agi.pin_uv_auth_protocols.is_empty() &&
+                agi.transports.is_empty() &&
+                agi.algorithms.is_empty()
+        } else {
+            false
+        };
+
+        if agi_invalid {
+            authenticator_get_info = None;
+            info!(
+                "Device was patched for invalid authenticator get info that was not collected from a real device: {:?}, {:?}, {:?}",
+                aaid, aaguid, attestation_certificate_key_identifiers
+            );
+            inconsistent_data = true;
         }
 
         if let Some(agi) = authenticator_get_info.as_ref() {
